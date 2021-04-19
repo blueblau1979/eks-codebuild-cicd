@@ -1,0 +1,37 @@
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      docker: 18
+    commands:
+      - echo install build and deploy dependencies...
+      - curl -o kubectl https://amazon-eks.s3.us-west-2.amazonaws.com/1.19.6/2021-01-05/bin/linux/amd64/kubectl
+      - mkdir -p $HOME/bin && cp ./kubectl $HOME/bin/kubectl && export PATH=$PATH:$HOME/bin
+  pre_build:
+    commands:
+      - docker login -u "${DOCKER_USER}" -p "${DOCKER_PSWD}"
+      - $(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION)
+      - TAG="$(date +%s)"
+      - REPOSITORY_URI="$ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME"
+      - sed -i 's@CONTAINER_IMAGE@'"$REPOSITORY_URI:$TAG"'@' deployfile/app.yaml
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build -t "${REPOSITORY_URI}:latest" .
+      - docker build -t "${REPOSITORY_URI}:${TAG}" .
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Uploading the Docker image...
+      - docker push "${REPOSITORY_URI}:latest"
+      - docker push "${REPOSITORY_URI}:${TAG}"
+      - echo Deploy app to staging env. on EKS cluster...
+      - aws eks --region $AWS_DEFAULT_REGION update-kubeconfig --name $AWS_CLUSTER_NAME
+      - kubectl apply -f deployfile/app.yaml
+      - printf '{"name":"eks-cicd-demo","imageUri":"%s"}' $REPOSITORY_URI:$TAG > build.json
+artifacts:
+  files: 
+    - build.json
+    - buildspec-2.yaml
+    - deployfile/app.yaml

@@ -1,0 +1,23 @@
+version: 0.2
+phases:
+  install:
+    commands:
+      - echo install build and deploy dependencies...
+      - curl -o kubectl https://amazon-eks.s3.us-west-2.amazonaws.com/1.19.6/2021-01-05/bin/linux/amd64/kubectl
+      - mkdir -p $HOME/bin && cp ./kubectl $HOME/bin/kubectl && export PATH=$PATH:$HOME/bin
+  pre_build:
+    commands:
+#   - IMAGE=$(cat build.json | jq -r '.imageUri')
+#   - sed -i 's@CONTAINER_IMAGE@'"$IMAGE"'@' deployfile/app.yaml
+    - sed -i 's@eks-cicd-staging@'"eks-cicd-prod"'@' deployfile/app.yaml
+  build:
+    commands:
+      - echo Nothing to build...
+  post_build:
+    commands:
+      - echo Deploy app to production env. on EKS cluster...
+      - aws eks --region $AWS_DEFAULT_REGION update-kubeconfig --name $AWS_CLUSTER_NAME
+      - kubectl apply -f deployfile/app.yaml
+artifacts:
+  files:
+    - deployfile/app.yaml
